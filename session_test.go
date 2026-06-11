@@ -2,6 +2,7 @@ package antigravity
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -111,6 +112,29 @@ func TestAntigravitySessionHistory_NoBrainDir(t *testing.T) {
 func TestAntigravitySessionHistory_TranscriptPathFromHook(t *testing.T) {
 	h := newTestHistory(afero.NewMemMapFs())
 	assert.Equal(t, "/some/path.jsonl", h.TranscriptPathFromHook("/ws", "id", "/some/path.jsonl"))
+}
+
+// TestAntigravitySessionHistory_OversizedLineDegrades pins the
+// degrade-to-partial contract: agy embeds whole file contents in single JSONL
+// lines (write_to_file CodeContent), so a line far beyond any scanner cap
+// must parse — or at worst be skipped — without failing the session.
+func TestAntigravitySessionHistory_OversizedLineDegrades(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	huge := strings.Repeat("x", 5*1024*1024)
+	transcript := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-06-10T20:05:07Z","content":"<USER_REQUEST>before</USER_REQUEST>"}` + "\n" +
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-06-10T20:05:08Z","content":"` + huge + `"}` + "\n" +
+		`{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-06-10T20:05:09Z","content":"after"}` + "\n"
+	path := filepath.Join("/home/u", ".gemini", "antigravity-cli", "brain", "big",
+		".system_generated", "logs", "transcript_full.jsonl")
+	require.NoError(t, fs.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, afero.WriteFile(fs, path, []byte(transcript), 0644))
+
+	h := newTestHistory(fs)
+	session, err := h.GetSession("/anywhere", "big")
+	require.NoError(t, err, "an oversized line must never fail the whole session")
+	require.Len(t, session.Entries, 3, "the oversized entry itself parses")
+	assert.Equal(t, "before", session.Entries[0].Content)
+	assert.Equal(t, "after", session.Entries[2].Content)
 }
 
 func TestExtractUserRequest(t *testing.T) {

@@ -37,10 +37,9 @@ func NewAntigravity(writeSettings agent.WriteSettingsFunc) *Antigravity {
 	b.BaseBackend = agent.NewBaseBackend("antigravity", "1.0.0")
 	b.BinaryPath = "agy"
 	b.InitLaunch(
-		NewAntigravityLifecycle(b),
-		&AntigravitySkills{backend: b},
-		NewAntigravityContext(b),
-		NewAntigravityMCPManager(b),
+		agent.NewBaseLifecycle("antigravity", b.writeSettings),
+		&AntigravitySkills{},
+		agent.NewBaseContextProvider(),
 		NewAntigravitySessionHistory(b),
 	)
 	return b
@@ -50,18 +49,8 @@ func NewAntigravity(writeSettings agent.WriteSettingsFunc) *Antigravity {
 // this backend. Without the Configurable type-assertion matching this
 // signature, a labeled antigravity entry's overrides would never take effect.
 func (b *Antigravity) Configure(cfg agent.BackendConfig) {
-	c, ok := cfg.(*AntigravityConfig)
-	if !ok {
-		return
-	}
-	if c.BinaryPath != "" {
-		b.BinaryPath = c.BinaryPath
-	}
-	if len(c.Args) > 0 {
-		b.Args = c.Args
-	}
-	for k, v := range c.Env {
-		b.Env[k] = v
+	if c, ok := cfg.(*AntigravityConfig); ok {
+		agent.ApplyLocalCLIConfig(&b.BaseBackend, c.BinaryPath, c.Args, c.Env)
 	}
 }
 
@@ -95,9 +84,13 @@ func (b *Antigravity) Execute(ctx context.Context, req *agent.ExecuteRequest, st
 		env[agent.SCMContextFileEnv] = b.ContextFilePath()
 	}
 
+	// Route on mode alone: ModeInteractive with an initial prompt builds
+	// `-i <prompt>` (agy runs the prompt then STAYS in the session), which
+	// needs the pty/stdin/resize wiring just as much as a bare interactive
+	// launch — running it non-interactively would leave a dead session.
 	var exitCode int32
 	var err error
-	if (req.Prompt == nil || req.Prompt.Content == "") && req.Mode == agent.ModeInteractive {
+	if req.Mode == agent.ModeInteractive {
 		exitCode, err = b.RunInteractive(ctx, args, env, req.Stdin, stdout, stderr, req.Resize)
 	} else {
 		exitCode, err = b.RunNonInteractive(ctx, args, env, stdout, stderr)

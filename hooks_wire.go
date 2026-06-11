@@ -54,8 +54,9 @@ type ToolCall struct {
 }
 
 // ToolArgs carries the union of argument fields across agy tools; per tool
-// only its own fields are set. Raw preserves the full argument object for
-// fields not modeled here.
+// only its own fields are set. Argument fields not modeled here are dropped
+// on decode — a consumer that needs one should re-decode the payload's args
+// object itself (none does today).
 type ToolArgs struct {
 	// run_command / execute_command
 	CommandLine string `json:"CommandLine,omitempty"`
