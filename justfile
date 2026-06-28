@@ -15,6 +15,11 @@ devcontainer_image := "antigravity-devcontainer"
 default:
     @just --list
 
+# Version management runs on the HOST (release-time), not in the devcontainer:
+# versionator is a host install. Only the lint/mutation targets are routed
+# through the pre-baked image (see header); these version targets deliberately
+# require versionator on the host PATH.
+
 # Show the current version (versionator; reads VERSION + git).
 show-version:
     @versionator output version

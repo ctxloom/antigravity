@@ -54,7 +54,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Tag with github.sha (the exact ref the downstream test/lint/mutation
+          # jobs pull as :${{ github.sha }}). On a pull_request github.sha is the
+          # merge commit, which differs from docker/metadata-action's type=sha
+          # (the PR head); without this raw tag the downstream image pull 404s.
           tags: |
+            type=raw,value=${{ github.sha }}
             type=sha,format=long,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
       - uses: docker/build-push-action@v5

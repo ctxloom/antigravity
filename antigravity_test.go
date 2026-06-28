@@ -412,6 +412,27 @@ func TestAntigravityHookWriter_EmptyMCPFileTolerated(t *testing.T) {
 	assert.Contains(t, mcpTop["mcpServers"], AppMCPServerName)
 }
 
+// TestAntigravityHookWriter_NoStrayEmptyHooksFile verifies that applying a
+// profile with no managed hooks (the context-injection hook is diverted to
+// AGENTS.md, so hooks stay empty) does not create a stray empty `{}`
+// hooks.json — matching saveMCPFile / reconcileManagedContext, which never
+// create empty files (antigravity-code-01-002).
+func TestAntigravityHookWriter_NoStrayEmptyHooksFile(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	writer := &AntigravityHookWriter{FS: fs}
+
+	require.NoError(t, writer.WriteSettings(&wire.HooksConfig{}, nil, nil, "/project"))
+
+	hooksExists, err := afero.Exists(fs, "/project/.agents/hooks.json")
+	require.NoError(t, err)
+	assert.False(t, hooksExists, "empty hooks must not create a stray hooks.json")
+
+	// The MCP server is still auto-registered, so its file is created as usual.
+	mcpExists, err := afero.Exists(fs, "/project/.agents/mcp_config.json")
+	require.NoError(t, err)
+	assert.True(t, mcpExists, "ctxloom MCP server should still be registered")
+}
+
 // TestAntigravityHookWriter_RemoveLeavesAbsentFilesAbsent verifies uninstall
 // never creates files.
 func TestAntigravityHookWriter_RemoveLeavesAbsentFilesAbsent(t *testing.T) {
@@ -486,10 +507,13 @@ func TestAntigravityHookWriter_MaterializesContextIntoAgentsMD(t *testing.T) {
 	assert.Contains(t, string(data), "the secret color is vermilion")
 	assert.Contains(t, string(data), managedContextEnd)
 
-	// The injection hook must not appear as a dead hooks.json entry.
-	hooksData, err := afero.ReadFile(fs, "/project/.agents/hooks.json")
+	// The injection hook must not appear as a dead hooks.json entry. With no
+	// other managed hooks, hooks.json must not be created at all: the writer
+	// leaves no stray empty `{}` file for a context-only profile
+	// (antigravity-code-01-002).
+	hooksExists, err := afero.Exists(fs, "/project/.agents/hooks.json")
 	require.NoError(t, err)
-	assert.NotContains(t, string(hooksData), "inject-context")
+	assert.False(t, hooksExists, "no stray hooks.json for a context-only profile")
 }
 
 // TestAntigravityHookWriter_ContextReconcileAndUserContent verifies the

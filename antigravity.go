@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/afero"
 
 	"github.com/ctxloom/shared/agent"
+	"github.com/ctxloom/shared/iox"
 	"github.com/ctxloom/shared/wire"
 )
 
@@ -310,6 +311,17 @@ func (w *AntigravityHookWriter) saveHooksFile(path string, hf *antigravityHooksF
 		output["hooks"] = hf.Hooks
 	}
 
+	if len(output) == 0 {
+		// Nothing to persist (no managed hooks, no preserved fields). Mirror
+		// saveMCPFile: never create a stray empty `{}` file — only rewrite/clear
+		// an existing one (e.g. RemoveSettings). For a context-only profile the
+		// injection hook is diverted to AGENTS.md, leaving hooks empty; agy
+		// treats an absent file and `{}` identically, so skip the write.
+		if exists, _ := afero.Exists(w.getFS(), path); !exists {
+			return nil
+		}
+	}
+
 	data, err := agent.CanonicalJSON(output)
 	if err != nil {
 		return fmt.Errorf("failed to marshal hooks.json: %w", err)
@@ -517,7 +529,11 @@ func (w *AntigravityHookWriter) writeMCPLedger(projectDir string, names []string
 		return nil
 	}
 	sort.Strings(names)
-	return afero.WriteFile(fs, path, []byte(strings.Join(names, "\n")+"\n"), 0644)
+	// Atomic write (shared helper) so a crash mid-write can't leave a torn
+	// ledger and silently orphan a managed stdio server in mcp_config.json —
+	// the exact failure the ledger exists to prevent. iox.WriteFileAtomicFs is
+	// an exact-perm drop-in for afero.WriteFile (keeps 0644, no .bak sidecar).
+	return iox.WriteFileAtomicFs(fs, path, []byte(strings.Join(names, "\n")+"\n"), 0644)
 }
 
 // writeMCPConfig reconciles ctxloom-managed MCP servers into mcp_config.json,

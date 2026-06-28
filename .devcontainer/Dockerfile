@@ -79,9 +79,11 @@ RUN pip3 install --break-system-packages --no-cache-dir lizard==1.22.2
 
 # Install golangci-lint via `go install` so the build does not depend on
 # golangci/golangci-lint's install.sh, whose embedded sha256 has been seen to
-# disagree with the tarball bytes served from GitHub releases (v2.12.2 at the
-# time of writing). `go install` uses the Go module checksum database, which
-# is the more reliable verification path. Binary lands in $GOPATH/bin (/go/bin),
+# disagree with the tarball bytes served from GitHub releases (observed for
+# v2.12.2). `go install` uses the Go module checksum database, which is the more
+# reliable verification path. The pin below is the deliberately chosen
+# known-good version (v2.12.1), independent of that install.sh issue; bump it
+# only after validating a newer release. Binary lands in $GOPATH/bin (/go/bin),
 # already on PATH from the Go install step above.
 RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.1
 
